@@ -21033,16 +21033,10 @@ function handleIssueEdited(options) {
         core.debug(`Query results: ${query.results}`);
         core.info("Building body blocks");
         const bodyBlocks = getBodyChildrenBlocks(payload.issue.body);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        let page;
         if (query.results.length > 0) {
-            page = query.results[0];
+            const page = query.results[0];
             core.info(`Query successful: Page ${page.id}`);
             core.info(`Updating page for issue #${payload.issue.number}`);
-            yield notion.client.pages.update({
-                page_id: page.id,
-                properties: yield parsePropertiesFromPayload({ payload, octokit }),
-            });
             const existingBlocks = (yield notion.client.blocks.children.list({
                 block_id: page.id,
             })).results;
@@ -21059,49 +21053,24 @@ function handleIssueEdited(options) {
                     .slice(overlap)
                     .map((block) => notion.client.blocks.delete({ block_id: block.id })));
             }
-            const possible = page
-                ? {
-                    name: (_a = page.properties.Project
-                        .rich_text[0]) === null || _a === void 0 ? void 0 : _a.plain_text,
-                    columnName: (_b = page.properties["Project Column"]
-                        .rich_text[0]) === null || _b === void 0 ? void 0 : _b.plain_text,
-                }
-                : undefined;
+            const possible = {
+                name: (_a = page.properties.Project
+                    .rich_text[0]) === null || _a === void 0 ? void 0 : _a.plain_text,
+                columnName: (_b = page.properties["Project Column"]
+                    .rich_text[0]) === null || _b === void 0 ? void 0 : _b.plain_text,
+            };
             yield notion.client.pages.update({
                 page_id: page.id,
                 properties: yield parsePropertiesFromPayload({
                     payload,
-                    octokit: options.octokit,
+                    octokit,
                     possibleProject: possible,
                 }),
             });
         }
         else {
-            core.warning(`Could not find page with github id ${payload.issue.id}, creating a new one`);
-            page = yield notion.client.pages.create({
-                parent: {
-                    database_id: notion.databaseId,
-                },
-                properties: yield parsePropertiesFromPayload({ payload, octokit }),
-                children: bodyBlocks,
-            });
+            core.warning(`Could not find page with github id ${payload.issue.id}`);
         }
-        const possible = page
-            ? {
-                name: (_a = page.properties.Project.rich_text[0]) === null || _a === void 0 ? void 0 : _a.plain_text,
-                columnName: (_b = page.properties['Project Column'].rich_text[0]) === null || _b === void 0 ? void 0 : _b.plain_text,
-            }
-            : undefined;
-        core.info(`Query successful: Page ${page.id}`);
-        core.info(`Updating page for issue #${payload.issue.number}`);
-        yield notion.client.pages.update({
-            page_id: page.id,
-            properties: yield parsePropertiesFromPayload({
-                payload,
-                octokit: options.octokit,
-                possibleProject: possible,
-            }),
-        });
     });
 }
 function run(options) {
