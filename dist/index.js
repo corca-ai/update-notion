@@ -20615,6 +20615,8 @@ var core = __nccwpck_require__(2186);
 var github = __nccwpck_require__(5438);
 // EXTERNAL MODULE: ./node_modules/@notionhq/client/build/src/index.js
 var src = __nccwpck_require__(324);
+// EXTERNAL MODULE: ./node_modules/octokit/dist-node/index.js
+var dist_node = __nccwpck_require__(7467);
 ;// CONCATENATED MODULE: ./src/common.ts
 // https://developers.notion.com/reference/errors#limits-for-property-values
 const RICH_TEXT_CONTENT_CHARACTERS_LIMIT = 1000;
@@ -20697,6 +20699,8 @@ var properties;
                 return select("Open", "green");
             case "closed":
                 return select("Closed", "red");
+            case "review":
+                return select("Review", "orange");
         }
     }
     properties.getStatusSelectOption = getStatusSelectOption;
@@ -20730,8 +20734,206 @@ var properties;
     properties.url = url;
 })(properties || (properties = {}));
 
-;// CONCATENATED MODULE: ./src/sync.ts
+;// CONCATENATED MODULE: ./src/issues/parser.ts
 var __awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+
+
+function removeHTML(text) {
+    var _a;
+    return (_a = text === null || text === void 0 ? void 0 : text.replace(/<.*>.*<\/.*>/g, "")) !== null && _a !== void 0 ? _a : "";
+}
+class IssueParser {
+    constructor(options) {
+        this.payload = options.payload;
+        this.octokit = options.octokit;
+    }
+    getProperties() {
+        var _a, _b, _c, _d, _e, _f, _g;
+        return __awaiter(this, void 0, void 0, function* () {
+            const payload = this.payload;
+            (_a = payload.issue.labels) === null || _a === void 0 ? void 0 : _a.map((label) => label.color);
+            const projectData = yield IssueParser.getProjectData(payload.repository.full_name, payload.issue.number, this.octokit);
+            core.debug(`Current project data: ${JSON.stringify(projectData, null, 2)}`);
+            if (!payload.issue.state) {
+                throw new Error("Issue state is not defined");
+            }
+            const result = {
+                Name: properties.title(payload.issue.title),
+                Status: properties.getStatusSelectOption(payload.issue.state),
+                Organization: properties.text((_c = (_b = payload.organization) === null || _b === void 0 ? void 0 : _b.login) !== null && _c !== void 0 ? _c : ""),
+                Repository: properties.text(payload.repository.name),
+                Number: properties.number(payload.issue.number),
+                Assignees: properties.multiSelect(payload.issue.assignees.map((assignee) => assignee.login)),
+                Milestone: properties.text((_e = (_d = payload.issue.milestone) === null || _d === void 0 ? void 0 : _d.title) !== null && _e !== void 0 ? _e : ""),
+                Labels: properties.multiSelect((_g = (_f = payload.issue.labels) === null || _f === void 0 ? void 0 : _f.map((label) => label.name)) !== null && _g !== void 0 ? _g : []),
+                Author: properties.text(payload.issue.user.login),
+                Created: properties.date(payload.issue.created_at),
+                Updated: properties.date(payload.issue.updated_at),
+                ID: properties.number(payload.issue.id),
+                Link: properties.url(payload.issue.html_url),
+                Project: properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.name) || ""),
+                "Project Column": properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.columnName) || ""),
+            };
+            return result;
+        });
+    }
+    getBody() {
+        // TODO
+        return [
+            { text: { content: removeHTML(this.payload.issue.body) } },
+        ];
+    }
+    getBodyBlocks() {
+        // We're currently using only one paragraph block, but this could be extended to multiple kinds of blocks.
+        return [
+            {
+                type: "paragraph",
+                paragraph: {
+                    text: this.getBody(),
+                },
+            },
+        ];
+    }
+    static getProjectData(repo, issue, octokit) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const projects = (yield octokit.rest.projects.listForRepo({
+                owner: repo.split("/")[0],
+                repo: repo.split("/")[1],
+            })).data || [];
+            core.debug(`Found ${projects.length} projects.`);
+            for (const project of projects) {
+                const columns = (yield octokit.rest.projects.listColumns({
+                    project_id: project.id,
+                })).data || [];
+                for (const column of columns) {
+                    const cards = (yield octokit.rest.projects.listCards({ column_id: column.id })).data, card = cards &&
+                        cards.find((c) => { var _a; return Number((_a = c.content_url) === null || _a === void 0 ? void 0 : _a.split("/issues/")[1]) === issue; });
+                    if (card)
+                        return {
+                            name: project.name,
+                            columnName: column.name,
+                        };
+                }
+            }
+            return undefined;
+        });
+    }
+    static createMultiSelectObjects(issue) {
+        var _a;
+        const assigneesObject = issue.assignees.map((assignee) => assignee.login);
+        const labelsObject = (_a = issue.labels) === null || _a === void 0 ? void 0 : _a.map((label) => label.name);
+        return { assigneesObject, labelsObject };
+    }
+}
+
+;// CONCATENATED MODULE: ./src/issues/handler.ts
+var handler_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+
+
+class IssueHandler {
+    constructor(options) {
+        this.notion = options.notion;
+        this.databaseId = options.databaseId;
+        this.payload = options.payload;
+        this.parser = new IssueParser({
+            payload: options.payload,
+            octokit: options.octokit,
+        });
+    }
+    fetchDatabase() {
+        return handler_awaiter(this, void 0, void 0, function* () {
+            const query = yield this.notion.databases.query({
+                database_id: this.databaseId,
+                filter: {
+                    property: "ID",
+                    number: {
+                        equals: this.payload.issue.id,
+                    },
+                },
+                page_size: 1,
+            });
+            return query.results;
+        });
+    }
+    handleIssue() {
+        return handler_awaiter(this, void 0, void 0, function* () {
+            if (this.payload.action === "opened") {
+                yield this.onIssueOpened();
+            }
+            else {
+                yield this.onIssueEdited();
+            }
+        });
+    }
+    onIssueOpened() {
+        return handler_awaiter(this, void 0, void 0, function* () {
+            core.info(`Creating page for issue #${this.payload.issue.number}`);
+            yield this.notion.pages.create({
+                parent: {
+                    database_id: this.databaseId,
+                },
+                properties: yield this.parser.getProperties(),
+                children: this.parser.getBodyBlocks(),
+            });
+        });
+    }
+    onIssueEdited() {
+        return handler_awaiter(this, void 0, void 0, function* () {
+            core.info(`Querying database for page with github id ${this.payload.issue.id}`);
+            const database = yield this.fetchDatabase();
+            core.debug(`Query results: ${database}`);
+            core.info("Building body blocks");
+            const bodyBlocks = this.parser.getBodyBlocks();
+            if (database.length > 0) {
+                const page = database[0];
+                core.info(`Query successful: Page ${page.id}`);
+                core.info(`Updating page for issue #${this.payload.issue.number}`);
+                const existingBlocks = (yield this.notion.blocks.children.list({
+                    block_id: page.id,
+                })).results;
+                const overlap = Math.min(bodyBlocks.length, existingBlocks.length);
+                yield Promise.all(bodyBlocks.slice(0, overlap).map((block, index) => this.notion.blocks.update(Object.assign({ block_id: existingBlocks[index].id }, block))));
+                if (bodyBlocks.length > existingBlocks.length) {
+                    yield this.notion.blocks.children.append({
+                        block_id: page.id,
+                        children: bodyBlocks.slice(overlap),
+                    });
+                }
+                else if (bodyBlocks.length < existingBlocks.length) {
+                    yield Promise.all(existingBlocks
+                        .slice(overlap)
+                        .map((block) => this.notion.blocks.delete({ block_id: block.id })));
+                }
+                yield this.notion.pages.update({
+                    page_id: page.id,
+                    properties: yield this.parser.getProperties(),
+                });
+            }
+            else {
+                core.warning(`Could not find page with github id ${this.payload.issue.id}`);
+            }
+        });
+    }
+}
+
+;// CONCATENATED MODULE: ./src/issues/client.ts
+var client_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
         function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
@@ -20750,49 +20952,51 @@ var __asyncValues = (undefined && undefined.__asyncValues) || function (o) {
 
 
 
-
-function createIssueMapping(notion, databaseId) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const issuePageIds = new Map();
-        const issuesAlreadyInNotion = yield getIssuesAlreadyInNotion(notion, databaseId);
-        for (const { pageId, issueNumber } of issuesAlreadyInNotion) {
-            issuePageIds.set(issueNumber, pageId);
-        }
-        return issuePageIds;
-    });
-}
-function syncNotionDBWithGitHub(issuePageIds, octokit, notion, databaseId, githubRepo) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const issues = yield getGitHubIssues(octokit, githubRepo);
-        const pagesToCreate = getIssuesNotInNotion(issuePageIds, issues);
-        yield createPages(notion, databaseId, pagesToCreate, octokit);
-    });
-}
-// Notion SDK for JS: https://developers.notion.com/reference/post-database-query
-function getIssuesAlreadyInNotion(notion, databaseId) {
-    return __awaiter(this, void 0, void 0, function* () {
-        core.info("Checking for issues already in the database...");
-        const pages = [];
-        let cursor = undefined;
-        let next_cursor = "true";
-        while (next_cursor) {
-            const response = yield notion.databases.query({
-                database_id: databaseId,
-                start_cursor: cursor,
+class IssueNotionClient {
+    constructor(options) {
+        this.notion = options.notion;
+        this.databaseId = options.databaseId;
+        this.octokit = options.octokit;
+        this.repo = options.repo;
+    }
+    query({ filter, page_size, start_cursor, }) {
+        return client_awaiter(this, void 0, void 0, function* () {
+            return this.notion.databases.query({
+                database_id: this.databaseId,
+                filter,
+                page_size,
+                start_cursor,
             });
-            next_cursor = response.next_cursor;
-            const results = response.results;
-            pages.push(...results);
-            if (!next_cursor) {
-                break;
+        });
+    }
+    fetchNotionIssuePages() {
+        return client_awaiter(this, void 0, void 0, function* () {
+            core.info("Checking for issues already in the database...");
+            const pages = [];
+            let cursor = undefined;
+            let next_cursor = "true";
+            while (next_cursor) {
+                const response = yield this.query({
+                    start_cursor: cursor,
+                });
+                next_cursor = response.next_cursor;
+                const { results } = response;
+                pages.push(...results);
+                if (!next_cursor) {
+                    break;
+                }
+                cursor = next_cursor;
             }
-            cursor = next_cursor;
-        }
+            return pages;
+        });
+    }
+    pagesToIssueNumbers(pages) {
         const res = [];
         pages.forEach((page) => {
             if ("properties" in page) {
                 let num = null;
-                num = page.properties["Number"].number;
+                num = page.properties["Number"]
+                    .number;
                 if (typeof num !== "undefined")
                     res.push({
                         pageId: page.id,
@@ -20801,108 +21005,93 @@ function getIssuesAlreadyInNotion(notion, databaseId) {
             }
         });
         return res;
-    });
-}
-// https://docs.github.com/en/rest/reference/issues#list-repository-issues
-function getGitHubIssues(octokit, githubRepo) {
-    var e_1, _a;
-    return __awaiter(this, void 0, void 0, function* () {
-        core.info("Finding Github Issues...");
-        const issues = [];
-        const iterator = octokit.paginate.iterator(octokit.rest.issues.listForRepo, {
-            owner: githubRepo.split("/")[0],
-            repo: githubRepo.split("/")[1],
-            state: "all",
-            per_page: 100,
-        });
-        try {
-            for (var iterator_1 = __asyncValues(iterator), iterator_1_1; iterator_1_1 = yield iterator_1.next(), !iterator_1_1.done;) {
-                const { data } = iterator_1_1.value;
-                for (const issue of data) {
-                    if (!issue.pull_request) {
-                        issues.push(issue);
+    }
+    fetchGitHubIssues() {
+        var e_1, _a;
+        return client_awaiter(this, void 0, void 0, function* () {
+            core.info("Finding Github Issues...");
+            const issues = [];
+            const iterator = this.octokit.paginate.iterator(this.octokit.rest.issues.listForRepo, {
+                owner: this.repo.split("/")[0],
+                repo: this.repo.split("/")[1],
+                state: "all",
+                per_page: 100,
+            });
+            try {
+                for (var iterator_1 = __asyncValues(iterator), iterator_1_1; iterator_1_1 = yield iterator_1.next(), !iterator_1_1.done;) {
+                    const { data } = iterator_1_1.value;
+                    for (const issue of data) {
+                        if (!issue.pull_request) {
+                            issues.push(issue);
+                        }
                     }
                 }
             }
-        }
-        catch (e_1_1) { e_1 = { error: e_1_1 }; }
-        finally {
-            try {
-                if (iterator_1_1 && !iterator_1_1.done && (_a = iterator_1.return)) yield _a.call(iterator_1);
+            catch (e_1_1) { e_1 = { error: e_1_1 }; }
+            finally {
+                try {
+                    if (iterator_1_1 && !iterator_1_1.done && (_a = iterator_1.return)) yield _a.call(iterator_1);
+                }
+                finally { if (e_1) throw e_1.error; }
             }
-            finally { if (e_1) throw e_1.error; }
-        }
-        return issues;
-    });
-}
-function getIssuesNotInNotion(issuePageIds, issues) {
-    const pagesToCreate = [];
-    for (const issue of issues) {
-        if (!issuePageIds.has(issue.number)) {
-            pagesToCreate.push(issue);
-        }
-    }
-    return pagesToCreate;
-}
-// Notion SDK for JS: https://developers.notion.com/reference/post-page
-function createPages(notion, databaseId, pagesToCreate, octokit) {
-    return __awaiter(this, void 0, void 0, function* () {
-        core.info("Adding Github Issues to Notion...");
-        yield Promise.all(pagesToCreate.map((issue) => __awaiter(this, void 0, void 0, function* () {
-            return notion.pages.create({
-                parent: { database_id: databaseId },
-                properties: yield getPropertiesFromIssue(issue, octokit),
-            });
-        })));
-    });
-}
-/*
- *  For the `Assignees` field in the Notion DB we want to send only issues.assignees.login
- *  For the `Labels` field in the Notion DB we want to send only issues.labels.name
- */
-function createMultiSelectObjects(issue) {
-    var _a;
-    const assigneesObject = issue.assignees.map((assignee) => assignee.login);
-    const labelsObject = (_a = issue.labels) === null || _a === void 0 ? void 0 : _a.map((label) => label.name);
-    return { assigneesObject, labelsObject };
-}
-function getPropertiesFromIssue(issue, octokit) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const { number, title, state, id, milestone, created_at, updated_at, body, repository_url, user, html_url, } = issue;
-        const author = user === null || user === void 0 ? void 0 : user.login;
-        const { assigneesObject, labelsObject } = createMultiSelectObjects(issue);
-        const urlComponents = repository_url.split("/");
-        const org = urlComponents[urlComponents.length - 2];
-        const repo = urlComponents[urlComponents.length - 1];
-        const projectData = yield getProjectData({
-            octokit,
-            githubRepo: `${org}/${repo}`,
-            issueNumber: issue.number,
+            return issues;
         });
-        // These properties are specific to the template DB referenced in the README.
-        return {
-            Name: properties.title(title),
-            Status: properties.getStatusSelectOption(state),
-            Organization: properties.text(org),
-            Repository: properties.text(repo),
-            Body: properties.richText(parseBodyRichText(body || "")),
-            Number: properties.number(number),
-            Assignees: properties.multiSelect(assigneesObject),
-            Milestone: properties.text(milestone ? milestone.title : ""),
-            Labels: properties.multiSelect(labelsObject ? labelsObject : []),
-            Author: properties.text(author),
-            Created: properties.date(created_at),
-            Updated: properties.date(updated_at),
-            ID: properties.number(id),
-            Link: properties.url(html_url),
-            Project: properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.name) || ""),
-            "Project Column": properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.columnName) || ""),
-        };
-    });
+    }
+    fetchOnlyGithubIssues() {
+        return client_awaiter(this, void 0, void 0, function* () {
+            const notionIssues = yield this.fetchNotionIssuePages();
+            const githubIssues = yield this.fetchGitHubIssues();
+            const issueIds = this.pagesToIssueNumbers(notionIssues).map((issue) => issue.issueNumber);
+            const pagesToCreate = [];
+            for (const issue of githubIssues) {
+                if (!issueIds.includes(issue.number)) {
+                    pagesToCreate.push(issue);
+                }
+            }
+            return pagesToCreate;
+        });
+    }
+    createPages(pagesToCreate) {
+        return client_awaiter(this, void 0, void 0, function* () {
+            yield Promise.all(pagesToCreate.map((issue) => client_awaiter(this, void 0, void 0, function* () {
+                return this.notion.pages.create({
+                    parent: { database_id: this.databaseId },
+                    properties: yield this.getPropertiesFromIssue(issue),
+                });
+            })));
+        });
+    }
+    getPropertiesFromIssue(issue) {
+        return client_awaiter(this, void 0, void 0, function* () {
+            const { number, title, state, id, milestone, created_at, updated_at, repository_url, user, html_url, } = issue;
+            const author = user === null || user === void 0 ? void 0 : user.login;
+            const { assigneesObject, labelsObject } = IssueParser.createMultiSelectObjects(issue);
+            const urlComponents = repository_url.split("/");
+            const org = urlComponents[urlComponents.length - 2];
+            const repo = urlComponents[urlComponents.length - 1];
+            const projectData = yield IssueParser.getProjectData(`${org}/${repo}`, issue.number, this.octokit);
+            // These properties are specific to the template DB referenced in the README.
+            return {
+                Name: properties.title(title),
+                Status: properties.getStatusSelectOption(state),
+                Organization: properties.text(org),
+                Repository: properties.text(repo),
+                Number: properties.number(number),
+                Assignees: properties.multiSelect(assigneesObject),
+                Milestone: properties.text(milestone ? milestone.title : ""),
+                Labels: properties.multiSelect(labelsObject ? labelsObject : []),
+                Author: properties.text(author),
+                Created: properties.date(created_at),
+                Updated: properties.date(updated_at),
+                ID: properties.number(id),
+                Link: properties.url(html_url),
+                Project: properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.name) || ""),
+                "Project Column": properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.columnName) || ""),
+            };
+        });
+    }
 }
 
-// EXTERNAL MODULE: ./node_modules/octokit/dist-node/index.js
-var dist_node = __nccwpck_require__(7467);
 ;// CONCATENATED MODULE: ./src/action.ts
 var action_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
@@ -20918,163 +21107,8 @@ var action_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _a
 
 
 
-function removeHTML(text) {
-    var _a;
-    return (_a = text === null || text === void 0 ? void 0 : text.replace(/<.*>.*<\/.*>/g, "")) !== null && _a !== void 0 ? _a : "";
-}
-function parsePropertiesFromPayload(options) {
-    var _a, _b, _c, _d, _e, _f, _g;
-    return action_awaiter(this, void 0, void 0, function* () {
-        const { payload, octokit, possibleProject } = options;
-        (_a = payload.issue.labels) === null || _a === void 0 ? void 0 : _a.map((label) => label.color);
-        const projectData = yield getProjectData({
-            octokit,
-            githubRepo: payload.repository.full_name,
-            issueNumber: payload.issue.number,
-            possible: possibleProject,
-        });
-        core.debug(`Current project data: ${JSON.stringify(projectData, null, 2)}`);
-        const result = {
-            Name: properties.title(payload.issue.title),
-            Status: properties.getStatusSelectOption(payload.issue.state),
-            Organization: properties.text((_c = (_b = payload.organization) === null || _b === void 0 ? void 0 : _b.login) !== null && _c !== void 0 ? _c : ""),
-            Repository: properties.text(payload.repository.name),
-            Number: properties.number(payload.issue.number),
-            Body: properties.richText(parseBodyRichText(payload.issue.body)),
-            Assignees: properties.multiSelect(payload.issue.assignees.map((assignee) => assignee.login)),
-            Milestone: properties.text((_e = (_d = payload.issue.milestone) === null || _d === void 0 ? void 0 : _d.title) !== null && _e !== void 0 ? _e : ""),
-            Labels: properties.multiSelect((_g = (_f = payload.issue.labels) === null || _f === void 0 ? void 0 : _f.map((label) => label.name)) !== null && _g !== void 0 ? _g : []),
-            Author: properties.text(payload.issue.user.login),
-            Created: properties.date(payload.issue.created_at),
-            Updated: properties.date(payload.issue.updated_at),
-            ID: properties.number(payload.issue.id),
-            Link: properties.url(payload.issue.html_url),
-            Project: properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.name) || ""),
-            "Project Column": properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.columnName) || ""),
-        };
-        return result;
-    });
-}
-function getProjectData(options) {
-    return action_awaiter(this, void 0, void 0, function* () {
-        const { octokit, githubRepo, issueNumber, possible } = options;
-        const projects = (yield octokit.rest.projects.listForRepo({
-            owner: githubRepo.split("/")[0],
-            repo: githubRepo.split("/")[1],
-        })).data || [];
-        projects.sort((p) => (p.name === (possible === null || possible === void 0 ? void 0 : possible.name) ? -1 : 1));
-        core.debug(`Found ${projects.length} projects.`);
-        for (const project of projects) {
-            const columns = (yield octokit.rest.projects.listColumns({ project_id: project.id }))
-                .data || [];
-            if ((possible === null || possible === void 0 ? void 0 : possible.name) === project.name)
-                columns.sort((c) => (c.name === possible.columnName ? -1 : 1));
-            for (const column of columns) {
-                const cards = (yield octokit.rest.projects.listCards({ column_id: column.id })).data, card = cards &&
-                    cards.find((c) => { var _a; return Number((_a = c.content_url) === null || _a === void 0 ? void 0 : _a.split("/issues/")[1]) === issueNumber; });
-                if (card)
-                    return {
-                        name: project.name,
-                        columnName: column.name,
-                    };
-            }
-        }
-        return undefined;
-    });
-}
-function parseBodyRichText(body) {
-    // TODO
-    return [
-        { text: { content: removeHTML(body) } },
-    ];
-}
-function getBodyChildrenBlocks(body) {
-    // We're currently using only one paragraph block, but this could be extended to multiple kinds of blocks.
-    return [
-        {
-            type: "paragraph",
-            paragraph: {
-                text: [{ text: { content: removeHTML(body) } }],
-            },
-        },
-    ];
-}
-function handleIssueOpened(options) {
-    return action_awaiter(this, void 0, void 0, function* () {
-        const { notion, payload } = options;
-        core.info(`Creating page for issue #${payload.issue.number}`);
-        yield notion.client.pages.create({
-            parent: {
-                database_id: notion.databaseId,
-            },
-            properties: yield parsePropertiesFromPayload({
-                payload,
-                octokit: options.octokit,
-            }),
-            children: getBodyChildrenBlocks(payload.issue.body),
-        });
-    });
-}
-function handleIssueEdited(options) {
-    var _a, _b;
-    return action_awaiter(this, void 0, void 0, function* () {
-        const { notion, payload, octokit } = options;
-        core.info(`Querying database for page with github id ${payload.issue.id}`);
-        const query = yield notion.client.databases.query({
-            database_id: notion.databaseId,
-            filter: {
-                property: "ID",
-                number: {
-                    equals: payload.issue.id,
-                },
-            },
-            page_size: 1,
-        });
-        core.debug(`Query results: ${query.results}`);
-        core.info("Building body blocks");
-        const bodyBlocks = getBodyChildrenBlocks(payload.issue.body);
-        if (query.results.length > 0) {
-            const page = query.results[0];
-            core.info(`Query successful: Page ${page.id}`);
-            core.info(`Updating page for issue #${payload.issue.number}`);
-            const existingBlocks = (yield notion.client.blocks.children.list({
-                block_id: page.id,
-            })).results;
-            const overlap = Math.min(bodyBlocks.length, existingBlocks.length);
-            yield Promise.all(bodyBlocks.slice(0, overlap).map((block, index) => notion.client.blocks.update(Object.assign({ block_id: existingBlocks[index].id }, block))));
-            if (bodyBlocks.length > existingBlocks.length) {
-                yield notion.client.blocks.children.append({
-                    block_id: page.id,
-                    children: bodyBlocks.slice(overlap),
-                });
-            }
-            else if (bodyBlocks.length < existingBlocks.length) {
-                yield Promise.all(existingBlocks
-                    .slice(overlap)
-                    .map((block) => notion.client.blocks.delete({ block_id: block.id })));
-            }
-            const possible = {
-                name: (_a = page.properties.Project
-                    .rich_text[0]) === null || _a === void 0 ? void 0 : _a.plain_text,
-                columnName: (_b = page.properties["Project Column"]
-                    .rich_text[0]) === null || _b === void 0 ? void 0 : _b.plain_text,
-            };
-            yield notion.client.pages.update({
-                page_id: page.id,
-                properties: yield parsePropertiesFromPayload({
-                    payload,
-                    octokit,
-                    possibleProject: possible,
-                }),
-            });
-        }
-        else {
-            core.warning(`Could not find page with github id ${payload.issue.id}`);
-        }
-    });
-}
 function run(options) {
-    var _a;
+    var _a, _b;
     return action_awaiter(this, void 0, void 0, function* () {
         const { notion, github } = options;
         core.info("Starting...");
@@ -21083,35 +21117,27 @@ function run(options) {
             logLevel: core.isDebug() ? src/* LogLevel.DEBUG */.in.DEBUG : src/* LogLevel.WARN */.in.WARN,
         });
         const octokit = new dist_node/* Octokit */.vd({ auth: github.token });
-        if (github.payload.action === "opened") {
-            yield handleIssueOpened({
-                notion: {
-                    client: notionClient,
-                    databaseId: notion.databaseId,
-                },
+        if (github.eventName === "issues") {
+            const handler = new IssueHandler({
+                notion: notionClient,
+                databaseId: notion.databaseId,
                 payload: github.payload,
                 octokit,
             });
+            yield handler.handleIssue();
         }
         else if (github.eventName === "workflow_dispatch") {
-            const notion = new src/* Client */.KU({ auth: options.notion.token });
-            const { databaseId } = options.notion;
-            const issuePageIds = yield createIssueMapping(notion, databaseId);
             if (!((_a = github.payload.repository) === null || _a === void 0 ? void 0 : _a.full_name)) {
-                throw new Error("Unable to find repository name in github webhook context");
+                throw new Error("Repository not found");
             }
-            const githubRepo = github.payload.repository.full_name;
-            yield syncNotionDBWithGitHub(issuePageIds, octokit, notion, databaseId, githubRepo);
-        }
-        else {
-            yield handleIssueEdited({
-                notion: {
-                    client: notionClient,
-                    databaseId: notion.databaseId,
-                },
-                payload: github.payload,
+            const handler = new IssueNotionClient({
+                notion: notionClient,
+                databaseId: notion.databaseId,
+                repo: (_b = github.payload.repository) === null || _b === void 0 ? void 0 : _b.full_name,
                 octokit,
             });
+            const issuesToCreate = yield handler.fetchOnlyGithubIssues();
+            yield handler.createPages(issuesToCreate);
         }
         core.info("Complete!");
     });
