@@ -7,7 +7,6 @@ export type CustomValueMap = {
   Organization: CustomTypes.RichText;
   Repository: CustomTypes.RichText;
   Number: CustomTypes.Number;
-  Body: CustomTypes.RichText;
   Assignees: CustomTypes.MultiSelect;
   Milestone: CustomTypes.RichText;
   Labels: CustomTypes.MultiSelect;
@@ -68,13 +67,15 @@ export namespace properties {
   }
 
   export function getStatusSelectOption(
-    state: "open" | "closed"
+    state: "open" | "closed" | "review"
   ): CustomTypes.Select {
     switch (state) {
       case "open":
         return select("Open", "green");
       case "closed":
         return select("Closed", "red");
+      case "review":
+        return select("Review", "orange");
     }
   }
 
