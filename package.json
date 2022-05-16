@@ -15,6 +15,7 @@
     "@notionhq/client": "^0.4.13",
     "@octokit/webhooks-definitions": "^3.67.3",
     "@tryfabric/martian": "^1.1.1",
+    "release-it": "^14.11.6",
     "octokit": "^1.1.0"
   },
   "devDependencies": {
