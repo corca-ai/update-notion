@@ -20620,7 +20620,7 @@ var src = __nccwpck_require__(324);
 const RICH_TEXT_CONTENT_CHARACTERS_LIMIT = 1000;
 function truncateTextContent(text) {
     return text.length > RICH_TEXT_CONTENT_CHARACTERS_LIMIT
-        ? text.substring(0, RICH_TEXT_CONTENT_CHARACTERS_LIMIT - 1) + '…'
+        ? text.substring(0, RICH_TEXT_CONTENT_CHARACTERS_LIMIT - 1) + "…"
         : text;
 }
 var common;
@@ -20631,8 +20631,8 @@ var common;
         const truncated = truncateTextContent(content);
         return [
             {
-                type: 'text',
-                annotations: Object.assign({ bold: false, strikethrough: false, underline: false, italic: false, code: false, color: 'default' }, annotations),
+                type: "text",
+                annotations: Object.assign({ bold: false, strikethrough: false, underline: false, italic: false, code: false, color: "default" }, annotations),
                 text: {
                     content: truncated,
                     link: options.url ? { url: options.url } : undefined,
@@ -20649,24 +20649,24 @@ var properties;
 (function (properties) {
     function text(text) {
         return {
-            type: 'rich_text',
+            type: "rich_text",
             rich_text: text ? common.richText(text) : [],
         };
     }
     properties.text = text;
     function richText(text) {
         return {
-            type: 'rich_text',
+            type: "rich_text",
             rich_text: text,
         };
     }
     properties.richText = richText;
     function title(text) {
         return {
-            type: 'title',
+            type: "title",
             title: [
                 {
-                    type: 'text',
+                    type: "text",
                     text: {
                         content: text,
                     },
@@ -20677,14 +20677,14 @@ var properties;
     properties.title = title;
     function number(number) {
         return {
-            type: 'number',
+            type: "number",
             number: number,
         };
     }
     properties.number = number;
     function date(time) {
         return {
-            type: 'date',
+            type: "date",
             date: {
                 start: time,
             },
@@ -20693,16 +20693,16 @@ var properties;
     properties.date = date;
     function getStatusSelectOption(state) {
         switch (state) {
-            case 'open':
-                return select('Open', 'green');
-            case 'closed':
-                return select('Closed', 'red');
+            case "open":
+                return select("Open", "green");
+            case "closed":
+                return select("Closed", "red");
         }
     }
     properties.getStatusSelectOption = getStatusSelectOption;
-    function select(name, color = 'default') {
+    function select(name, color = "default") {
         return {
-            type: 'select',
+            type: "select",
             select: {
                 name: name,
                 color: color,
@@ -20712,8 +20712,8 @@ var properties;
     properties.select = select;
     function multiSelect(names) {
         return {
-            type: 'multi_select',
-            multi_select: names.map(name => {
+            type: "multi_select",
+            multi_select: names.map((name) => {
                 return {
                     name: name,
                 };
@@ -20723,7 +20723,7 @@ var properties;
     properties.multiSelect = multiSelect;
     function url(url) {
         return {
-            type: 'url',
+            type: "url",
             url,
         };
     }
@@ -20771,10 +20771,10 @@ function syncNotionDBWithGitHub(issuePageIds, octokit, notion, databaseId, githu
 // Notion SDK for JS: https://developers.notion.com/reference/post-database-query
 function getIssuesAlreadyInNotion(notion, databaseId) {
     return __awaiter(this, void 0, void 0, function* () {
-        core.info('Checking for issues already in the database...');
+        core.info("Checking for issues already in the database...");
         const pages = [];
         let cursor = undefined;
-        let next_cursor = 'true';
+        let next_cursor = "true";
         while (next_cursor) {
             const response = yield notion.databases.query({
                 database_id: databaseId,
@@ -20789,11 +20789,11 @@ function getIssuesAlreadyInNotion(notion, databaseId) {
             cursor = next_cursor;
         }
         const res = [];
-        pages.forEach(page => {
-            if ('properties' in page) {
+        pages.forEach((page) => {
+            if ("properties" in page) {
                 let num = null;
-                num = page.properties['Number'].number;
-                if (typeof num !== 'undefined')
+                num = page.properties["Number"].number;
+                if (typeof num !== "undefined")
                     res.push({
                         pageId: page.id,
                         issueNumber: num,
@@ -20807,12 +20807,12 @@ function getIssuesAlreadyInNotion(notion, databaseId) {
 function getGitHubIssues(octokit, githubRepo) {
     var e_1, _a;
     return __awaiter(this, void 0, void 0, function* () {
-        core.info('Finding Github Issues...');
+        core.info("Finding Github Issues...");
         const issues = [];
         const iterator = octokit.paginate.iterator(octokit.rest.issues.listForRepo, {
-            owner: githubRepo.split('/')[0],
-            repo: githubRepo.split('/')[1],
-            state: 'all',
+            owner: githubRepo.split("/")[0],
+            repo: githubRepo.split("/")[1],
+            state: "all",
             per_page: 100,
         });
         try {
@@ -20847,7 +20847,7 @@ function getIssuesNotInNotion(issuePageIds, issues) {
 // Notion SDK for JS: https://developers.notion.com/reference/post-page
 function createPages(notion, databaseId, pagesToCreate, octokit) {
     return __awaiter(this, void 0, void 0, function* () {
-        core.info('Adding Github Issues to Notion...');
+        core.info("Adding Github Issues to Notion...");
         yield Promise.all(pagesToCreate.map((issue) => __awaiter(this, void 0, void 0, function* () {
             return notion.pages.create({
                 parent: { database_id: databaseId },
@@ -20871,7 +20871,7 @@ function getPropertiesFromIssue(issue, octokit) {
         const { number, title, state, id, milestone, created_at, updated_at, body, repository_url, user, html_url, } = issue;
         const author = user === null || user === void 0 ? void 0 : user.login;
         const { assigneesObject, labelsObject } = createMultiSelectObjects(issue);
-        const urlComponents = repository_url.split('/');
+        const urlComponents = repository_url.split("/");
         const org = urlComponents[urlComponents.length - 2];
         const repo = urlComponents[urlComponents.length - 1];
         const projectData = yield getProjectData({
@@ -20885,18 +20885,18 @@ function getPropertiesFromIssue(issue, octokit) {
             Status: properties.getStatusSelectOption(state),
             Organization: properties.text(org),
             Repository: properties.text(repo),
-            Body: properties.richText(parseBodyRichText(body || '')),
+            Body: properties.richText(parseBodyRichText(body || "")),
             Number: properties.number(number),
             Assignees: properties.multiSelect(assigneesObject),
-            Milestone: properties.text(milestone ? milestone.title : ''),
+            Milestone: properties.text(milestone ? milestone.title : ""),
             Labels: properties.multiSelect(labelsObject ? labelsObject : []),
             Author: properties.text(author),
             Created: properties.date(created_at),
             Updated: properties.date(updated_at),
             ID: properties.number(id),
             Link: properties.url(html_url),
-            Project: properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.name) || ''),
-            'Project Column': properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.columnName) || ''),
+            Project: properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.name) || ""),
+            "Project Column": properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.columnName) || ""),
         };
     });
 }
@@ -20920,13 +20920,13 @@ var action_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _a
 
 function removeHTML(text) {
     var _a;
-    return (_a = text === null || text === void 0 ? void 0 : text.replace(/<.*>.*<\/.*>/g, '')) !== null && _a !== void 0 ? _a : '';
+    return (_a = text === null || text === void 0 ? void 0 : text.replace(/<.*>.*<\/.*>/g, "")) !== null && _a !== void 0 ? _a : "";
 }
 function parsePropertiesFromPayload(options) {
     var _a, _b, _c, _d, _e, _f, _g;
     return action_awaiter(this, void 0, void 0, function* () {
         const { payload, octokit, possibleProject } = options;
-        (_a = payload.issue.labels) === null || _a === void 0 ? void 0 : _a.map(label => label.color);
+        (_a = payload.issue.labels) === null || _a === void 0 ? void 0 : _a.map((label) => label.color);
         const projectData = yield getProjectData({
             octokit,
             githubRepo: payload.repository.full_name,
@@ -20937,20 +20937,20 @@ function parsePropertiesFromPayload(options) {
         const result = {
             Name: properties.title(payload.issue.title),
             Status: properties.getStatusSelectOption(payload.issue.state),
-            Organization: properties.text((_c = (_b = payload.organization) === null || _b === void 0 ? void 0 : _b.login) !== null && _c !== void 0 ? _c : ''),
+            Organization: properties.text((_c = (_b = payload.organization) === null || _b === void 0 ? void 0 : _b.login) !== null && _c !== void 0 ? _c : ""),
             Repository: properties.text(payload.repository.name),
             Number: properties.number(payload.issue.number),
             Body: properties.richText(parseBodyRichText(payload.issue.body)),
-            Assignees: properties.multiSelect(payload.issue.assignees.map(assignee => assignee.login)),
-            Milestone: properties.text((_e = (_d = payload.issue.milestone) === null || _d === void 0 ? void 0 : _d.title) !== null && _e !== void 0 ? _e : ''),
-            Labels: properties.multiSelect((_g = (_f = payload.issue.labels) === null || _f === void 0 ? void 0 : _f.map(label => label.name)) !== null && _g !== void 0 ? _g : []),
+            Assignees: properties.multiSelect(payload.issue.assignees.map((assignee) => assignee.login)),
+            Milestone: properties.text((_e = (_d = payload.issue.milestone) === null || _d === void 0 ? void 0 : _d.title) !== null && _e !== void 0 ? _e : ""),
+            Labels: properties.multiSelect((_g = (_f = payload.issue.labels) === null || _f === void 0 ? void 0 : _f.map((label) => label.name)) !== null && _g !== void 0 ? _g : []),
             Author: properties.text(payload.issue.user.login),
             Created: properties.date(payload.issue.created_at),
             Updated: properties.date(payload.issue.updated_at),
             ID: properties.number(payload.issue.id),
             Link: properties.url(payload.issue.html_url),
-            Project: properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.name) || ''),
-            'Project Column': properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.columnName) || ''),
+            Project: properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.name) || ""),
+            "Project Column": properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.columnName) || ""),
         };
         return result;
     });
@@ -20959,17 +20959,19 @@ function getProjectData(options) {
     return action_awaiter(this, void 0, void 0, function* () {
         const { octokit, githubRepo, issueNumber, possible } = options;
         const projects = (yield octokit.rest.projects.listForRepo({
-            owner: githubRepo.split('/')[0],
-            repo: githubRepo.split('/')[1],
+            owner: githubRepo.split("/")[0],
+            repo: githubRepo.split("/")[1],
         })).data || [];
-        projects.sort(p => (p.name === (possible === null || possible === void 0 ? void 0 : possible.name) ? -1 : 1));
+        projects.sort((p) => (p.name === (possible === null || possible === void 0 ? void 0 : possible.name) ? -1 : 1));
         core.debug(`Found ${projects.length} projects.`);
         for (const project of projects) {
-            const columns = (yield octokit.rest.projects.listColumns({ project_id: project.id })).data || [];
+            const columns = (yield octokit.rest.projects.listColumns({ project_id: project.id }))
+                .data || [];
             if ((possible === null || possible === void 0 ? void 0 : possible.name) === project.name)
-                columns.sort(c => (c.name === possible.columnName ? -1 : 1));
+                columns.sort((c) => (c.name === possible.columnName ? -1 : 1));
             for (const column of columns) {
-                const cards = (yield octokit.rest.projects.listCards({ column_id: column.id })).data, card = cards && cards.find(c => { var _a; return Number((_a = c.content_url) === null || _a === void 0 ? void 0 : _a.split('/issues/')[1]) === issueNumber; });
+                const cards = (yield octokit.rest.projects.listCards({ column_id: column.id })).data, card = cards &&
+                    cards.find((c) => { var _a; return Number((_a = c.content_url) === null || _a === void 0 ? void 0 : _a.split("/issues/")[1]) === issueNumber; });
                 if (card)
                     return {
                         name: project.name,
@@ -20982,13 +20984,15 @@ function getProjectData(options) {
 }
 function parseBodyRichText(body) {
     // TODO
-    return [{ text: { content: removeHTML(body) } }];
+    return [
+        { text: { content: removeHTML(body) } },
+    ];
 }
 function getBodyChildrenBlocks(body) {
     // We're currently using only one paragraph block, but this could be extended to multiple kinds of blocks.
     return [
         {
-            type: 'paragraph',
+            type: "paragraph",
             paragraph: {
                 text: [{ text: { content: removeHTML(body) } }],
             },
@@ -21019,7 +21023,7 @@ function handleIssueEdited(options) {
         const query = yield notion.client.databases.query({
             database_id: notion.databaseId,
             filter: {
-                property: 'ID',
+                property: "ID",
                 number: {
                     equals: payload.issue.id,
                 },
@@ -21027,74 +21031,65 @@ function handleIssueEdited(options) {
             page_size: 1,
         });
         core.debug(`Query results: ${query.results}`);
-        core.info('Building body blocks');
+        core.info("Building body blocks");
         const bodyBlocks = getBodyChildrenBlocks(payload.issue.body);
         if (query.results.length > 0) {
-            const pageId = query.results[0].id;
-            core.info(`Query successful: Page ${pageId}`);
+            const page = query.results[0];
+            core.info(`Query successful: Page ${page.id}`);
             core.info(`Updating page for issue #${payload.issue.number}`);
             yield notion.client.pages.update({
-                page_id: pageId,
+                page_id: page.id,
                 properties: yield parsePropertiesFromPayload({ payload, octokit }),
             });
             const existingBlocks = (yield notion.client.blocks.children.list({
-                block_id: pageId,
+                block_id: page.id,
             })).results;
             const overlap = Math.min(bodyBlocks.length, existingBlocks.length);
             yield Promise.all(bodyBlocks.slice(0, overlap).map((block, index) => notion.client.blocks.update(Object.assign({ block_id: existingBlocks[index].id }, block))));
             if (bodyBlocks.length > existingBlocks.length) {
                 yield notion.client.blocks.children.append({
-                    block_id: pageId,
+                    block_id: page.id,
                     children: bodyBlocks.slice(overlap),
                 });
             }
             else if (bodyBlocks.length < existingBlocks.length) {
                 yield Promise.all(existingBlocks
                     .slice(overlap)
-                    .map(block => notion.client.blocks.delete({ block_id: block.id })));
+                    .map((block) => notion.client.blocks.delete({ block_id: block.id })));
             }
-        }
-        else {
-            core.warning(`Could not find page with github id ${payload.issue.id}, creating a new one`);
-            yield notion.client.pages.create({
-                parent: {
-                    database_id: notion.databaseId,
-                },
-                properties: yield parsePropertiesFromPayload({ payload, octokit }),
-                children: bodyBlocks,
+            const possible = page
+                ? {
+                    name: (_a = page.properties.Project
+                        .rich_text[0]) === null || _a === void 0 ? void 0 : _a.plain_text,
+                    columnName: (_b = page.properties["Project Column"]
+                        .rich_text[0]) === null || _b === void 0 ? void 0 : _b.plain_text,
+                }
+                : undefined;
+            yield notion.client.pages.update({
+                page_id: page.id,
+                properties: yield parsePropertiesFromPayload({
+                    payload,
+                    octokit: options.octokit,
+                    possibleProject: possible,
+                }),
             });
         }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result = query.results[0], pageId = result.id, possible = result
-            ? {
-                name: (_a = result.properties.Project.rich_text[0]) === null || _a === void 0 ? void 0 : _a.plain_text,
-                columnName: (_b = result.properties['Project Column']
-                    .rich_text[0]) === null || _b === void 0 ? void 0 : _b.plain_text,
-            }
-            : undefined;
-        core.info(`Query successful: Page ${pageId}`);
-        core.info(`Updating page for issue #${payload.issue.number}`);
-        yield notion.client.pages.update({
-            page_id: pageId,
-            properties: yield parsePropertiesFromPayload({
-                payload,
-                octokit: options.octokit,
-                possibleProject: possible,
-            }),
-        });
+        else {
+            core.warning(`Could not find page with github id ${payload.issue.id}`);
+        }
     });
 }
 function run(options) {
     var _a;
     return action_awaiter(this, void 0, void 0, function* () {
         const { notion, github } = options;
-        core.info('Starting...');
+        core.info("Starting...");
         const notionClient = new src/* Client */.KU({
             auth: notion.token,
             logLevel: core.isDebug() ? src/* LogLevel.DEBUG */.in.DEBUG : src/* LogLevel.WARN */.in.WARN,
         });
         const octokit = new dist_node/* Octokit */.vd({ auth: github.token });
-        if (github.payload.action === 'opened') {
+        if (github.payload.action === "opened") {
             yield handleIssueOpened({
                 notion: {
                     client: notionClient,
@@ -21104,12 +21099,12 @@ function run(options) {
                 octokit,
             });
         }
-        else if (github.eventName === 'workflow_dispatch') {
+        else if (github.eventName === "workflow_dispatch") {
             const notion = new src/* Client */.KU({ auth: options.notion.token });
             const { databaseId } = options.notion;
             const issuePageIds = yield createIssueMapping(notion, databaseId);
             if (!((_a = github.payload.repository) === null || _a === void 0 ? void 0 : _a.full_name)) {
-                throw new Error('Unable to find repository name in github webhook context');
+                throw new Error("Unable to find repository name in github webhook context");
             }
             const githubRepo = github.payload.repository.full_name;
             yield syncNotionDBWithGitHub(issuePageIds, octokit, notion, databaseId, githubRepo);
@@ -21124,7 +21119,7 @@ function run(options) {
                 octokit,
             });
         }
-        core.info('Complete!');
+        core.info("Complete!");
     });
 }
 
@@ -21142,9 +21137,9 @@ var src_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _argu
 
 
 const INPUTS = {
-    NOTION_TOKEN: 'notion-token',
-    NOTION_DB: 'notion-db',
-    GITHUB_TOKEN: 'github-token',
+    NOTION_TOKEN: "notion-token",
+    NOTION_DB: "notion-db",
+    GITHUB_TOKEN: "github-token",
 };
 function start() {
     return src_awaiter(this, void 0, void 0, function* () {

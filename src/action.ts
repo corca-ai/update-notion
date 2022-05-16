@@ -192,18 +192,11 @@ async function handleIssueEdited(options: IssueEditedOptions) {
   core.info("Building body blocks");
   const bodyBlocks = getBodyChildrenBlocks(payload.issue.body);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  let page: any;
   if (query.results.length > 0) {
-    page = query.results[0];
+    const page = query.results[0];
 
     core.info(`Query successful: Page ${page.id}`);
     core.info(`Updating page for issue #${payload.issue.number}`);
-
-    await notion.client.pages.update({
-      page_id: page.id,
-      properties: await parsePropertiesFromPayload({ payload, octokit }),
-    });
 
     const existingBlocks = (
       await notion.client.blocks.children.list({
@@ -234,44 +227,29 @@ async function handleIssueEdited(options: IssueEditedOptions) {
           .map((block) => notion.client.blocks.delete({ block_id: block.id }))
       );
     }
-  } else {
-    core.warning(
-      `Could not find page with github id ${payload.issue.id}, creating a new one`
-    );
 
-    page = await notion.client.pages.create({
-      parent: {
-        database_id: notion.databaseId,
-      },
-      properties: await parsePropertiesFromPayload({ payload, octokit }),
-      children: bodyBlocks,
+    const possible: ProjectData = {
+      name: (
+        ((page as any).properties as CustomValueMap).Project
+          .rich_text[0] as RichTextItemResponse
+      )?.plain_text,
+      columnName: (
+        ((page as any).properties as CustomValueMap)["Project Column"]
+          .rich_text[0] as RichTextItemResponse
+      )?.plain_text,
+    };
+
+    await notion.client.pages.update({
+      page_id: page.id,
+      properties: await parsePropertiesFromPayload({
+        payload,
+        octokit,
+        possibleProject: possible,
+      }),
     });
+  } else {
+    core.warning(`Could not find page with github id ${payload.issue.id}`);
   }
-
-  const possible: ProjectData | undefined = page
-    ? {
-        name: (
-          (page.properties as CustomValueMap).Project
-            .rich_text[0] as RichTextItemResponse
-        )?.plain_text,
-        columnName: (
-          (page.properties as CustomValueMap)["Project Column"]
-            .rich_text[0] as RichTextItemResponse
-        )?.plain_text,
-      }
-    : undefined;
-
-  core.info(`Query successful: Page ${page.id}`);
-  core.info(`Updating page for issue #${payload.issue.number}`);
-
-  await notion.client.pages.update({
-    page_id: page.id,
-    properties: await parsePropertiesFromPayload({
-      payload,
-      octokit: options.octokit,
-      possibleProject: possible,
-    }),
-  });
 }
 
 interface Options {
