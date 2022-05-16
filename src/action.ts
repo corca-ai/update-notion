@@ -1,10 +1,14 @@
 import { Client, LogLevel } from "@notionhq/client/build/src";
 import * as core from "@actions/core";
-import type { IssuesEvent } from "@octokit/webhooks-definitions/schema";
+import type {
+  IssuesEvent,
+  PullRequestEvent,
+} from "@octokit/webhooks-definitions/schema";
 import type { WebhookPayload } from "@actions/github/lib/interfaces";
 import { Octokit } from "octokit";
 import { IssueHandler } from "./issues/handler";
-import { IssueNotionClient } from "./issues/client";
+import { NotGitClient } from "./notion/client";
+import { PullRequestHandler } from "./pull-request/handler";
 
 interface Options {
   notion: {
@@ -28,27 +32,39 @@ export async function run(options: Options) {
     logLevel: core.isDebug() ? LogLevel.DEBUG : LogLevel.WARN,
   });
   const octokit = new Octokit({ auth: github.token });
+  const payload = github.payload;
+
+  if (!payload.repository?.full_name) {
+    throw new Error("Repository name is not provided");
+  }
+
+  const client = new NotGitClient({
+    notion: notionClient,
+    databaseId: notion.databaseId,
+    repo: payload.repository?.full_name,
+    octokit,
+  });
 
   if (github.eventName === "issues") {
     const handler = new IssueHandler({
-      notion: notionClient,
-      databaseId: notion.databaseId,
-      payload: github.payload as IssuesEvent,
+      client,
+      payload: payload as IssuesEvent,
       octokit,
     });
     await handler.handleIssue();
   } else if (github.eventName === "workflow_dispatch") {
-    if (!github.payload.repository?.full_name) {
-      throw new Error("Repository not found");
-    }
-    const handler = new IssueNotionClient({
-      notion: notionClient,
-      databaseId: notion.databaseId,
-      repo: github.payload.repository?.full_name,
+    const handler = new IssueHandler({
+      client,
+      payload: payload as IssuesEvent,
       octokit,
     });
-    const issuesToCreate = await handler.fetchOnlyGithubIssues();
-    await handler.createPages(issuesToCreate);
+    await handler.handleSync();
+  } else if (github.eventName === "pull_request") {
+    const handler = new PullRequestHandler({
+      client,
+      payload: payload as PullRequestEvent,
+    });
+    await handler.handleOpen();
   }
 
   core.info("Complete!");

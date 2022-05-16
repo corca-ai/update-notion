@@ -4,8 +4,8 @@ import type { Issue } from "@octokit/webhooks-definitions/schema";
 import { QueryDatabaseResponse } from "@notionhq/client/build/src/api-endpoints";
 import { Octokit } from "octokit";
 import { CustomTypes } from "../api-types";
-import { IssueParser } from "./parser";
-import { CustomValueMap, properties } from "../properties";
+import { IssueParser } from "../issues/parser";
+import { properties } from "../properties";
 
 interface IssueHandlerOptions {
   notion: Client;
@@ -14,7 +14,7 @@ interface IssueHandlerOptions {
   repo: string;
 }
 
-export class IssueNotionClient {
+export class NotGitClient {
   private octokit: Octokit;
   private notion: Client;
   private databaseId: string;
@@ -44,7 +44,89 @@ export class IssueNotionClient {
     });
   }
 
-  async fetchNotionIssuePages() {
+  async fetchIssuePages(issueId: number) {
+    const query = await this.notion.databases.query({
+      database_id: this.databaseId,
+      filter: {
+        property: "ID",
+        number: {
+          equals: issueId,
+        },
+      },
+      page_size: 1,
+    });
+    return query.results;
+  }
+
+  async changeIssueStatus(page: any, status: "open" | "closed" | "review") {
+    return this.notion.pages.update({
+      page_id: page.id,
+      properties: {
+        Status: properties.getStatusSelectOption(status),
+      },
+    });
+  }
+
+  async editIssuePage(page: any, parser: IssueParser) {
+    const bodyBlocks = parser.getBodyBlocks();
+    const existingBlocks = (
+      await this.notion.blocks.children.list({
+        block_id: page.id,
+      })
+    ).results;
+
+    const overlap = Math.min(bodyBlocks.length, existingBlocks.length);
+
+    await Promise.all(
+      bodyBlocks.slice(0, overlap).map((block, index) =>
+        this.notion.blocks.update({
+          block_id: existingBlocks[index].id,
+          ...block,
+        })
+      )
+    );
+
+    if (bodyBlocks.length > existingBlocks.length) {
+      await this.notion.blocks.children.append({
+        block_id: page.id,
+        children: bodyBlocks.slice(overlap),
+      });
+    } else if (bodyBlocks.length < existingBlocks.length) {
+      await Promise.all(
+        existingBlocks
+          .slice(overlap)
+          .map((block) => this.notion.blocks.delete({ block_id: block.id }))
+      );
+    }
+
+    return this.notion.pages.update({
+      page_id: page.id,
+      properties: await parser.getProperties(),
+    });
+  }
+
+  async createIssuePage(parser: IssueParser) {
+    return this.notion.pages.create({
+      parent: {
+        database_id: this.databaseId,
+      },
+      properties: await parser.getProperties(),
+      children: parser.getBodyBlocks(),
+    });
+  }
+
+  async createIssuePages(issues: Issue[], parser: IssueParser) {
+    await Promise.all(
+      issues.map(async (issue) =>
+        this.notion.pages.create({
+          parent: { database_id: this.databaseId },
+          properties: await parser.getPropertiesFromIssue(issue),
+        })
+      )
+    );
+  }
+
+  async fetchNotionIssuePagesAll() {
     core.info("Checking for issues already in the database...");
     const pages: QueryDatabaseResponse["results"] = [];
     let cursor = undefined;
@@ -113,7 +195,7 @@ export class IssueNotionClient {
   }
 
   async fetchOnlyGithubIssues(): Promise<Issue[]> {
-    const notionIssues = await this.fetchNotionIssuePages();
+    const notionIssues = await this.fetchNotionIssuePagesAll();
     const githubIssues = await this.fetchGitHubIssues();
 
     const issueIds = this.pagesToIssueNumbers(notionIssues).map(
@@ -126,62 +208,5 @@ export class IssueNotionClient {
       }
     }
     return pagesToCreate;
-  }
-
-  async createPages(pagesToCreate: Issue[]): Promise<void> {
-    await Promise.all(
-      pagesToCreate.map(async (issue) =>
-        this.notion.pages.create({
-          parent: { database_id: this.databaseId },
-          properties: await this.getPropertiesFromIssue(issue),
-        })
-      )
-    );
-  }
-
-  async getPropertiesFromIssue(issue: Issue): Promise<CustomValueMap> {
-    const {
-      number,
-      title,
-      state,
-      id,
-      milestone,
-      created_at,
-      updated_at,
-      repository_url,
-      user,
-      html_url,
-    } = issue;
-    const author = user?.login;
-    const { assigneesObject, labelsObject } =
-      IssueParser.createMultiSelectObjects(issue);
-    const urlComponents = repository_url.split("/");
-    const org = urlComponents[urlComponents.length - 2];
-    const repo = urlComponents[urlComponents.length - 1];
-
-    const projectData = await IssueParser.getProjectData(
-      `${org}/${repo}`,
-      issue.number,
-      this.octokit
-    );
-
-    // These properties are specific to the template DB referenced in the README.
-    return {
-      Name: properties.title(title),
-      Status: properties.getStatusSelectOption(state!),
-      Organization: properties.text(org),
-      Repository: properties.text(repo),
-      Number: properties.number(number),
-      Assignees: properties.multiSelect(assigneesObject),
-      Milestone: properties.text(milestone ? milestone.title : ""),
-      Labels: properties.multiSelect(labelsObject ? labelsObject : []),
-      Author: properties.text(author),
-      Created: properties.date(created_at),
-      Updated: properties.date(updated_at),
-      ID: properties.number(id),
-      Link: properties.url(html_url),
-      Project: properties.text(projectData?.name || ""),
-      "Project Column": properties.text(projectData?.columnName || ""),
-    };
   }
 }

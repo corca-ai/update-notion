@@ -33,11 +33,7 @@ export class IssueParser {
 
     payload.issue.labels?.map((label) => label.color);
 
-    const projectData = await IssueParser.getProjectData(
-      payload.repository.full_name,
-      payload.issue.number,
-      this.octokit
-    );
+    const projectData = await this.getProjectData();
 
     core.debug(`Current project data: ${JSON.stringify(projectData, null, 2)}`);
 
@@ -89,14 +85,11 @@ export class IssueParser {
     ];
   }
 
-  static async getProjectData(
-    repo: string,
-    issue: number,
-    octokit: Octokit
-  ): Promise<ProjectData | undefined> {
+  async getProjectData(): Promise<ProjectData | undefined> {
+    const repo = this.payload.repository.full_name;
     const projects =
       (
-        await octokit.rest.projects.listForRepo({
+        await this.octokit.rest.projects.listForRepo({
           owner: repo.split("/")[0],
           repo: repo.split("/")[1],
         })
@@ -107,19 +100,21 @@ export class IssueParser {
     for (const project of projects) {
       const columns =
         (
-          await octokit.rest.projects.listColumns({
+          await this.octokit.rest.projects.listColumns({
             project_id: project.id,
           })
         ).data || [];
 
       for (const column of columns) {
         const cards = (
-            await octokit.rest.projects.listCards({ column_id: column.id })
+            await this.octokit.rest.projects.listCards({ column_id: column.id })
           ).data,
           card =
             cards &&
             cards.find(
-              (c) => Number(c.content_url?.split("/issues/")[1]) === issue
+              (c) =>
+                Number(c.content_url?.split("/issues/")[1]) ===
+                this.payload.issue.number
             );
 
         if (card)
@@ -144,5 +139,47 @@ export class IssueParser {
       (label: { name: string }) => label.name
     );
     return { assigneesObject, labelsObject };
+  }
+
+  async getPropertiesFromIssue(issue: Issue): Promise<CustomValueMap> {
+    const {
+      number,
+      title,
+      state,
+      id,
+      milestone,
+      created_at,
+      updated_at,
+      repository_url,
+      user,
+      html_url,
+    } = issue;
+    const author = user?.login;
+    const { assigneesObject, labelsObject } =
+      IssueParser.createMultiSelectObjects(issue);
+    const urlComponents = repository_url.split("/");
+    const org = urlComponents[urlComponents.length - 2];
+    const repo = urlComponents[urlComponents.length - 1];
+
+    const projectData = await this.getProjectData();
+
+    // These properties are specific to the template DB referenced in the README.
+    return {
+      Name: properties.title(title),
+      Status: properties.getStatusSelectOption(state!),
+      Organization: properties.text(org),
+      Repository: properties.text(repo),
+      Number: properties.number(number),
+      Assignees: properties.multiSelect(assigneesObject),
+      Milestone: properties.text(milestone ? milestone.title : ""),
+      Labels: properties.multiSelect(labelsObject ? labelsObject : []),
+      Author: properties.text(author),
+      Created: properties.date(created_at),
+      Updated: properties.date(updated_at),
+      ID: properties.number(id),
+      Link: properties.url(html_url),
+      Project: properties.text(projectData?.name || ""),
+      "Project Column": properties.text(projectData?.columnName || ""),
+    };
   }
 }
