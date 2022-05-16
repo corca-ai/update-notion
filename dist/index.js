@@ -21029,22 +21029,24 @@ function handleIssueEdited(options) {
         core.debug(`Query results: ${query.results}`);
         core.info('Building body blocks');
         const bodyBlocks = getBodyChildrenBlocks(payload.issue.body);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        let page;
         if (query.results.length > 0) {
-            const pageId = query.results[0].id;
-            core.info(`Query successful: Page ${pageId}`);
+            page = query.results[0];
+            core.info(`Query successful: Page ${page.id}`);
             core.info(`Updating page for issue #${payload.issue.number}`);
             yield notion.client.pages.update({
-                page_id: pageId,
+                page_id: page.id,
                 properties: yield parsePropertiesFromPayload({ payload, octokit }),
             });
             const existingBlocks = (yield notion.client.blocks.children.list({
-                block_id: pageId,
+                block_id: page.id,
             })).results;
             const overlap = Math.min(bodyBlocks.length, existingBlocks.length);
             yield Promise.all(bodyBlocks.slice(0, overlap).map((block, index) => notion.client.blocks.update(Object.assign({ block_id: existingBlocks[index].id }, block))));
             if (bodyBlocks.length > existingBlocks.length) {
                 yield notion.client.blocks.children.append({
-                    block_id: pageId,
+                    block_id: page.id,
                     children: bodyBlocks.slice(overlap),
                 });
             }
@@ -21056,7 +21058,7 @@ function handleIssueEdited(options) {
         }
         else {
             core.warning(`Could not find page with github id ${payload.issue.id}, creating a new one`);
-            yield notion.client.pages.create({
+            page = yield notion.client.pages.create({
                 parent: {
                     database_id: notion.databaseId,
                 },
@@ -21064,18 +21066,16 @@ function handleIssueEdited(options) {
                 children: bodyBlocks,
             });
         }
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const result = query.results[0], pageId = result.id, possible = result
+        const possible = page
             ? {
-                name: (_a = result.properties.Project.rich_text[0]) === null || _a === void 0 ? void 0 : _a.plain_text,
-                columnName: (_b = result.properties['Project Column']
-                    .rich_text[0]) === null || _b === void 0 ? void 0 : _b.plain_text,
+                name: (_a = page.properties.Project.rich_text[0]) === null || _a === void 0 ? void 0 : _a.plain_text,
+                columnName: (_b = page.properties['Project Column'].rich_text[0]) === null || _b === void 0 ? void 0 : _b.plain_text,
             }
             : undefined;
-        core.info(`Query successful: Page ${pageId}`);
+        core.info(`Query successful: Page ${page.id}`);
         core.info(`Updating page for issue #${payload.issue.number}`);
         yield notion.client.pages.update({
-            page_id: pageId,
+            page_id: page.id,
             properties: yield parsePropertiesFromPayload({
                 payload,
                 octokit: options.octokit,
