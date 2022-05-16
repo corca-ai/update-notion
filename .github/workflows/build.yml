@@ -3,7 +3,7 @@ name: Build
 on:
   push:
     branches:
-      - master
+      - main
   workflow_dispatch:
 
 jobs:
@@ -44,7 +44,7 @@ jobs:
       - name: Commit dist
         uses: EndBug/add-and-commit@v7
         with:
-          add: "dist"
+          add: 'dist'
           author_name: github-actions[bot]
           author_email: github-actions[bot]@users.noreply.github.com
-          message: "[auto] Update compiled version"
+          message: '[auto] Update compiled version'
