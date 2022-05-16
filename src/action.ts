@@ -172,20 +172,22 @@ async function handleIssueEdited(options: IssueEditedOptions) {
   core.info('Building body blocks');
   const bodyBlocks = getBodyChildrenBlocks(payload.issue.body);
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let page: any;
   if (query.results.length > 0) {
-    const pageId = query.results[0].id;
+    page = query.results[0];
 
-    core.info(`Query successful: Page ${pageId}`);
+    core.info(`Query successful: Page ${page.id}`);
     core.info(`Updating page for issue #${payload.issue.number}`);
 
     await notion.client.pages.update({
-      page_id: pageId,
+      page_id: page.id,
       properties: await parsePropertiesFromPayload({payload, octokit}),
     });
 
     const existingBlocks = (
       await notion.client.blocks.children.list({
-        block_id: pageId,
+        block_id: page.id,
       })
     ).results;
 
@@ -202,7 +204,7 @@ async function handleIssueEdited(options: IssueEditedOptions) {
 
     if (bodyBlocks.length > existingBlocks.length) {
       await notion.client.blocks.children.append({
-        block_id: pageId,
+        block_id: page.id,
         children: bodyBlocks.slice(overlap),
       });
     } else if (bodyBlocks.length < existingBlocks.length) {
@@ -215,7 +217,7 @@ async function handleIssueEdited(options: IssueEditedOptions) {
   } else {
     core.warning(`Could not find page with github id ${payload.issue.id}, creating a new one`);
 
-    await notion.client.pages.create({
+    page = await notion.client.pages.create({
       parent: {
         database_id: notion.databaseId,
       },
@@ -224,25 +226,21 @@ async function handleIssueEdited(options: IssueEditedOptions) {
     });
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const result = query.results[0] as any,
-    pageId = result.id,
-    possible: ProjectData | undefined = result
-      ? {
-          name: ((result.properties as CustomValueMap).Project.rich_text[0] as RichTextItemResponse)
-            ?.plain_text,
-          columnName: (
-            (result.properties as CustomValueMap)['Project Column']
-              .rich_text[0] as RichTextItemResponse
-          )?.plain_text,
-        }
-      : undefined;
+  const possible: ProjectData | undefined = page
+    ? {
+        name: ((page.properties as CustomValueMap).Project.rich_text[0] as RichTextItemResponse)
+          ?.plain_text,
+        columnName: (
+          (page.properties as CustomValueMap)['Project Column'].rich_text[0] as RichTextItemResponse
+        )?.plain_text,
+      }
+    : undefined;
 
-  core.info(`Query successful: Page ${pageId}`);
+  core.info(`Query successful: Page ${page.id}`);
   core.info(`Updating page for issue #${payload.issue.number}`);
 
   await notion.client.pages.update({
-    page_id: pageId,
+    page_id: page.id,
     properties: await parsePropertiesFromPayload({
       payload,
       octokit: options.octokit,
