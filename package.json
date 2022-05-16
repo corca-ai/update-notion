@@ -6,8 +6,7 @@
   "main": "dist/index.js",
   "scripts": {
     "test": "jest",
-    "build": "ncc build src/index.ts",
-    "lint": "gts lint src/*"
+    "build": "ncc build src/index.ts"
   },
   "dependencies": {
     "@actions/core": "^1.4.0",

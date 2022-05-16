@@ -1,18 +1,18 @@
-import * as core from '@actions/core';
-import * as github from '@actions/github';
-import {run} from './action';
+import * as core from "@actions/core";
+import * as github from "@actions/github";
+import { run } from "./action";
 
 const INPUTS = {
-  NOTION_TOKEN: 'notion-token',
-  NOTION_DB: 'notion-db',
-  GITHUB_TOKEN: 'github-token',
+  NOTION_TOKEN: "notion-token",
+  NOTION_DB: "notion-db",
+  GITHUB_TOKEN: "github-token",
 };
 
 async function start() {
   try {
-    const notionToken = core.getInput(INPUTS.NOTION_TOKEN, {required: true});
-    const notionDb = core.getInput(INPUTS.NOTION_DB, {required: true});
-    const githubToken = core.getInput(INPUTS.GITHUB_TOKEN, {required: true});
+    const notionToken = core.getInput(INPUTS.NOTION_TOKEN, { required: true });
+    const notionDb = core.getInput(INPUTS.NOTION_DB, { required: true });
+    const githubToken = core.getInput(INPUTS.GITHUB_TOKEN, { required: true });
 
     core.info(`context event: ${github.context.eventName}`);
     core.info(`context action: ${github.context.action}`);

@@ -1,5 +1,5 @@
-import {CustomTypes, SelectColor} from './api-types';
-import {common} from './common';
+import { CustomTypes, SelectColor } from "./api-types";
+import { common } from "./common";
 
 export type CustomValueMap = {
   Name: CustomTypes.Title;
@@ -17,30 +17,32 @@ export type CustomValueMap = {
   ID: CustomTypes.Number;
   Link: CustomTypes.URL;
   Project: CustomTypes.RichText;
-  'Project Column': CustomTypes.RichText;
+  "Project Column": CustomTypes.RichText;
 };
 
 export namespace properties {
   export function text(text: string): CustomTypes.RichText {
     return {
-      type: 'rich_text',
+      type: "rich_text",
       rich_text: text ? common.richText(text) : [],
     };
   }
 
-  export function richText(text: CustomTypes.RichText['rich_text']): CustomTypes.RichText {
+  export function richText(
+    text: CustomTypes.RichText["rich_text"]
+  ): CustomTypes.RichText {
     return {
-      type: 'rich_text',
+      type: "rich_text",
       rich_text: text,
     };
   }
 
   export function title(text: string): CustomTypes.Title {
     return {
-      type: 'title',
+      type: "title",
       title: [
         {
-          type: 'text',
+          type: "text",
           text: {
             content: text,
           },
@@ -51,32 +53,37 @@ export namespace properties {
 
   export function number(number: number): CustomTypes.Number {
     return {
-      type: 'number',
+      type: "number",
       number: number,
     };
   }
 
   export function date(time: string): CustomTypes.Date {
     return {
-      type: 'date',
+      type: "date",
       date: {
         start: time,
       },
     };
   }
 
-  export function getStatusSelectOption(state: 'open' | 'closed'): CustomTypes.Select {
+  export function getStatusSelectOption(
+    state: "open" | "closed"
+  ): CustomTypes.Select {
     switch (state) {
-      case 'open':
-        return select('Open', 'green');
-      case 'closed':
-        return select('Closed', 'red');
+      case "open":
+        return select("Open", "green");
+      case "closed":
+        return select("Closed", "red");
     }
   }
 
-  export function select(name: string, color: SelectColor = 'default'): CustomTypes.Select {
+  export function select(
+    name: string,
+    color: SelectColor = "default"
+  ): CustomTypes.Select {
     return {
-      type: 'select',
+      type: "select",
       select: {
         name: name,
         color: color,
@@ -86,8 +93,8 @@ export namespace properties {
 
   export function multiSelect(names: string[]): CustomTypes.MultiSelect {
     return {
-      type: 'multi_select',
-      multi_select: names.map(name => {
+      type: "multi_select",
+      multi_select: names.map((name) => {
         return {
           name: name,
         };
@@ -97,7 +104,7 @@ export namespace properties {
 
   export function url(url: string): CustomTypes.URL {
     return {
-      type: 'url',
+      type: "url",
       url,
     };
   }
