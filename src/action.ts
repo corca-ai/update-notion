@@ -168,6 +168,8 @@ async function handleIssueEdited(options: IssueEditedOptions) {
     page_size: 1,
   });
 
+  core.debug(`Query results: ${query.results}`);
+  core.info('Building body blocks');
   const bodyBlocks = getBodyChildrenBlocks(payload.issue.body);
 
   if (query.results.length > 0) {
