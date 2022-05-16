@@ -32921,7 +32921,10 @@ function start() {
             yield run(options);
         }
         catch (e) {
-            core.setFailed(e instanceof Error ? e.message : e + '');
+            if (e instanceof Error) {
+                core.error(`${e.stack}`);
+            }
+            core.setFailed(e instanceof Error ? e : `${e}`);
         }
     });
 }
