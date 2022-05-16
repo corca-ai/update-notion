@@ -5,7 +5,6 @@ import type {WebhookPayload} from '@actions/github/lib/interfaces';
 import {CustomValueMap, properties} from './properties';
 import {createIssueMapping, syncNotionDBWithGitHub} from './sync';
 import {Octokit} from 'octokit';
-import {markdownToRichText} from '@tryfabric/martian';
 import {CustomTypes, RichTextItemResponse} from './api-types';
 import {CreatePageParameters} from '@notionhq/client/build/src/api-endpoints';
 
@@ -102,7 +101,8 @@ export async function getProjectData(
 }
 
 export function parseBodyRichText(body: string) {
-  return markdownToRichText(removeHTML(body)) as CustomTypes.RichText['rich_text'];
+  // TODO
+  return [{text: {content: removeHTML(body)}}] as CustomTypes.RichText['rich_text'];
 }
 
 function getBodyChildrenBlocks(body: string): Exclude<CreatePageParameters['children'], undefined> {
@@ -111,7 +111,7 @@ function getBodyChildrenBlocks(body: string): Exclude<CreatePageParameters['chil
     {
       type: 'paragraph',
       paragraph: {
-        text: parseBodyRichText(body),
+        text: [{text: {content: removeHTML(body)}}],
       },
     },
   ];
