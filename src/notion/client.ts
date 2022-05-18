@@ -58,7 +58,10 @@ export class NotGitClient {
     return query.results;
   }
 
-  async changeIssueStatus(page: any, status: "open" | "closed" | "review") {
+  async changeIssueStatus(
+    page: any,
+    status: "open" | "assigned" | "closed" | "review"
+  ) {
     return this.notion.pages.update({
       page_id: page.id,
       properties: {

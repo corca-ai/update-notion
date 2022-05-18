@@ -67,15 +67,17 @@ export namespace properties {
   }
 
   export function getStatusSelectOption(
-    state: "open" | "closed" | "review"
+    state: "open" | "assigned" | "closed" | "review"
   ): CustomTypes.Select {
     switch (state) {
       case "open":
         return select("Open", "green");
-      case "closed":
-        return select("Closed", "red");
+      case "assigned":
+        return select("Assigned", "yellow");
       case "review":
         return select("Review", "orange");
+      case "closed":
+        return select("Closed", "red");
     }
   }
 

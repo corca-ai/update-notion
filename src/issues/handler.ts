@@ -14,6 +14,7 @@ export class IssueHandler {
   private payload: IssuesEvent;
   private parser: IssueParser;
   private client: NotGitClient;
+  private octokit: Octokit;
 
   constructor(options: IssueHandlerOptions) {
     this.payload = options.payload;
@@ -22,11 +23,14 @@ export class IssueHandler {
       octokit: options.octokit,
     });
     this.client = options.client;
+    this.octokit = options.octokit;
   }
 
   async handleIssue() {
     if (this.payload.action === "opened") {
       await this.onIssueOpened();
+    } else if (this.payload.action === "assigned") {
+      await this.onIssueAssigned();
     } else {
       await this.onIssueEdited();
     }
@@ -63,5 +67,14 @@ export class IssueHandler {
         `Could not find page with github id ${this.payload.issue.id}`
       );
     }
+  }
+
+  async onIssueAssigned() {
+    this.payload.issue.state = "assigned" as any;
+    this.parser = new IssueParser({
+      payload: this.payload,
+      octokit: this.octokit,
+    });
+    return this.onIssueEdited();
   }
 }

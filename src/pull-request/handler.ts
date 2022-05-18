@@ -30,10 +30,9 @@ export class PullRequestHandler {
       core.error("Issue number not found in pull request url");
       throw e;
     }
+    core.debug(this.payload.pull_request.issue_url);
 
-    const pages = await this.client.fetchIssuePages(
-      Number(this.payload.pull_request.issue_url.split("/").pop())
-    );
+    const pages = await this.client.fetchIssuePages(issueId);
 
     core.info("Building body blocks");
 
