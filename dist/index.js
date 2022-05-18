@@ -20697,10 +20697,12 @@ var properties;
         switch (state) {
             case "open":
                 return select("Open", "green");
-            case "closed":
-                return select("Closed", "red");
+            case "assigned":
+                return select("Assigned", "yellow");
             case "review":
                 return select("Review", "orange");
+            case "closed":
+                return select("Closed", "red");
         }
     }
     properties.getStatusSelectOption = getStatusSelectOption;
@@ -20888,11 +20890,15 @@ class IssueHandler {
             octokit: options.octokit,
         });
         this.client = options.client;
+        this.octokit = options.octokit;
     }
     handleIssue() {
         return handler_awaiter(this, void 0, void 0, function* () {
             if (this.payload.action === "opened") {
                 yield this.onIssueOpened();
+            }
+            else if (this.payload.action === "assigned") {
+                yield this.onIssueAssigned();
             }
             else {
                 yield this.onIssueEdited();
@@ -20925,6 +20931,16 @@ class IssueHandler {
             else {
                 core.warning(`Could not find page with github id ${this.payload.issue.id}`);
             }
+        });
+    }
+    onIssueAssigned() {
+        return handler_awaiter(this, void 0, void 0, function* () {
+            this.payload.issue.state = "assigned";
+            this.parser = new IssueParser({
+                payload: this.payload,
+                octokit: this.octokit,
+            });
+            return this.onIssueEdited();
         });
     }
 }
@@ -21153,7 +21169,8 @@ class PullRequestHandler {
                 core.error("Issue number not found in pull request url");
                 throw e;
             }
-            const pages = yield this.client.fetchIssuePages(Number(this.payload.pull_request.issue_url.split("/").pop()));
+            core.debug(this.payload.pull_request.issue_url);
+            const pages = yield this.client.fetchIssuePages(issueId);
             core.info("Building body blocks");
             if (pages.length > 0) {
                 const page = pages[0];
