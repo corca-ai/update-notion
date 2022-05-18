@@ -20760,7 +20760,7 @@ class IssueParser {
         return __awaiter(this, void 0, void 0, function* () {
             const payload = this.payload;
             (_a = payload.issue.labels) === null || _a === void 0 ? void 0 : _a.map((label) => label.color);
-            const projectData = yield IssueParser.getProjectData(payload.repository.full_name, payload.issue.number, this.octokit);
+            const projectData = yield this.getProjectData();
             core.debug(`Current project data: ${JSON.stringify(projectData, null, 2)}`);
             if (!payload.issue.state) {
                 throw new Error("Issue state is not defined");
@@ -20802,20 +20802,25 @@ class IssueParser {
             },
         ];
     }
-    static getProjectData(repo, issue, octokit) {
+    getProjectData() {
         return __awaiter(this, void 0, void 0, function* () {
-            const projects = (yield octokit.rest.projects.listForRepo({
+            const repo = this.payload.repository.full_name;
+            const projects = (yield this.octokit.rest.projects.listForRepo({
                 owner: repo.split("/")[0],
                 repo: repo.split("/")[1],
             })).data || [];
             core.debug(`Found ${projects.length} projects.`);
             for (const project of projects) {
-                const columns = (yield octokit.rest.projects.listColumns({
+                const columns = (yield this.octokit.rest.projects.listColumns({
                     project_id: project.id,
                 })).data || [];
                 for (const column of columns) {
-                    const cards = (yield octokit.rest.projects.listCards({ column_id: column.id })).data, card = cards &&
-                        cards.find((c) => { var _a; return Number((_a = c.content_url) === null || _a === void 0 ? void 0 : _a.split("/issues/")[1]) === issue; });
+                    const cards = (yield this.octokit.rest.projects.listCards({ column_id: column.id })).data, card = cards &&
+                        cards.find((c) => {
+                            var _a;
+                            return Number((_a = c.content_url) === null || _a === void 0 ? void 0 : _a.split("/issues/")[1]) ===
+                                this.payload.issue.number;
+                        });
                     if (card)
                         return {
                             name: project.name,
@@ -20831,6 +20836,35 @@ class IssueParser {
         const assigneesObject = issue.assignees.map((assignee) => assignee.login);
         const labelsObject = (_a = issue.labels) === null || _a === void 0 ? void 0 : _a.map((label) => label.name);
         return { assigneesObject, labelsObject };
+    }
+    getPropertiesFromIssue(issue) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const { number, title, state, id, milestone, created_at, updated_at, repository_url, user, html_url, } = issue;
+            const author = user === null || user === void 0 ? void 0 : user.login;
+            const { assigneesObject, labelsObject } = IssueParser.createMultiSelectObjects(issue);
+            const urlComponents = repository_url.split("/");
+            const org = urlComponents[urlComponents.length - 2];
+            const repo = urlComponents[urlComponents.length - 1];
+            const projectData = yield this.getProjectData();
+            // These properties are specific to the template DB referenced in the README.
+            return {
+                Name: properties.title(title),
+                Status: properties.getStatusSelectOption(state),
+                Organization: properties.text(org),
+                Repository: properties.text(repo),
+                Number: properties.number(number),
+                Assignees: properties.multiSelect(assigneesObject),
+                Milestone: properties.text(milestone ? milestone.title : ""),
+                Labels: properties.multiSelect(labelsObject ? labelsObject : []),
+                Author: properties.text(author),
+                Created: properties.date(created_at),
+                Updated: properties.date(updated_at),
+                ID: properties.number(id),
+                Link: properties.url(html_url),
+                Project: properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.name) || ""),
+                "Project Column": properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.columnName) || ""),
+            };
+        });
     }
 }
 
@@ -20848,28 +20882,12 @@ var handler_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _
 
 class IssueHandler {
     constructor(options) {
-        this.notion = options.notion;
-        this.databaseId = options.databaseId;
         this.payload = options.payload;
         this.parser = new IssueParser({
             payload: options.payload,
             octokit: options.octokit,
         });
-    }
-    fetchDatabase() {
-        return handler_awaiter(this, void 0, void 0, function* () {
-            const query = yield this.notion.databases.query({
-                database_id: this.databaseId,
-                filter: {
-                    property: "ID",
-                    number: {
-                        equals: this.payload.issue.id,
-                    },
-                },
-                page_size: 1,
-            });
-            return query.results;
-        });
+        this.client = options.client;
     }
     handleIssue() {
         return handler_awaiter(this, void 0, void 0, function* () {
@@ -20881,49 +20899,28 @@ class IssueHandler {
             }
         });
     }
+    handleSync() {
+        return handler_awaiter(this, void 0, void 0, function* () {
+            const issuesToCreate = yield this.client.fetchOnlyGithubIssues();
+            yield this.client.createIssuePages(issuesToCreate, this.parser);
+        });
+    }
     onIssueOpened() {
         return handler_awaiter(this, void 0, void 0, function* () {
             core.info(`Creating page for issue #${this.payload.issue.number}`);
-            yield this.notion.pages.create({
-                parent: {
-                    database_id: this.databaseId,
-                },
-                properties: yield this.parser.getProperties(),
-                children: this.parser.getBodyBlocks(),
-            });
+            yield this.client.createIssuePage(this.parser);
         });
     }
     onIssueEdited() {
         return handler_awaiter(this, void 0, void 0, function* () {
             core.info(`Querying database for page with github id ${this.payload.issue.id}`);
-            const database = yield this.fetchDatabase();
-            core.debug(`Query results: ${database}`);
+            const pages = yield this.client.fetchIssuePages(this.payload.issue.id);
             core.info("Building body blocks");
-            const bodyBlocks = this.parser.getBodyBlocks();
-            if (database.length > 0) {
-                const page = database[0];
+            if (pages.length > 0) {
+                const page = pages[0];
                 core.info(`Query successful: Page ${page.id}`);
                 core.info(`Updating page for issue #${this.payload.issue.number}`);
-                const existingBlocks = (yield this.notion.blocks.children.list({
-                    block_id: page.id,
-                })).results;
-                const overlap = Math.min(bodyBlocks.length, existingBlocks.length);
-                yield Promise.all(bodyBlocks.slice(0, overlap).map((block, index) => this.notion.blocks.update(Object.assign({ block_id: existingBlocks[index].id }, block))));
-                if (bodyBlocks.length > existingBlocks.length) {
-                    yield this.notion.blocks.children.append({
-                        block_id: page.id,
-                        children: bodyBlocks.slice(overlap),
-                    });
-                }
-                else if (bodyBlocks.length < existingBlocks.length) {
-                    yield Promise.all(existingBlocks
-                        .slice(overlap)
-                        .map((block) => this.notion.blocks.delete({ block_id: block.id })));
-                }
-                yield this.notion.pages.update({
-                    page_id: page.id,
-                    properties: yield this.parser.getProperties(),
-                });
+                yield this.client.editIssuePage(pages[0], this.parser);
             }
             else {
                 core.warning(`Could not find page with github id ${this.payload.issue.id}`);
@@ -20932,7 +20929,7 @@ class IssueHandler {
     }
 }
 
-;// CONCATENATED MODULE: ./src/issues/client.ts
+;// CONCATENATED MODULE: ./src/notion/client.ts
 var client_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
     function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
     return new (P || (P = Promise))(function (resolve, reject) {
@@ -20951,8 +20948,7 @@ var __asyncValues = (undefined && undefined.__asyncValues) || function (o) {
 };
 
 
-
-class IssueNotionClient {
+class NotGitClient {
     constructor(options) {
         this.notion = options.notion;
         this.databaseId = options.databaseId;
@@ -20969,7 +20965,78 @@ class IssueNotionClient {
             });
         });
     }
-    fetchNotionIssuePages() {
+    fetchIssuePages(issueId) {
+        return client_awaiter(this, void 0, void 0, function* () {
+            const query = yield this.notion.databases.query({
+                database_id: this.databaseId,
+                filter: {
+                    property: "ID",
+                    number: {
+                        equals: issueId,
+                    },
+                },
+                page_size: 1,
+            });
+            return query.results;
+        });
+    }
+    changeIssueStatus(page, status) {
+        return client_awaiter(this, void 0, void 0, function* () {
+            return this.notion.pages.update({
+                page_id: page.id,
+                properties: {
+                    Status: properties.getStatusSelectOption(status),
+                },
+            });
+        });
+    }
+    editIssuePage(page, parser) {
+        return client_awaiter(this, void 0, void 0, function* () {
+            const bodyBlocks = parser.getBodyBlocks();
+            const existingBlocks = (yield this.notion.blocks.children.list({
+                block_id: page.id,
+            })).results;
+            const overlap = Math.min(bodyBlocks.length, existingBlocks.length);
+            yield Promise.all(bodyBlocks.slice(0, overlap).map((block, index) => this.notion.blocks.update(Object.assign({ block_id: existingBlocks[index].id }, block))));
+            if (bodyBlocks.length > existingBlocks.length) {
+                yield this.notion.blocks.children.append({
+                    block_id: page.id,
+                    children: bodyBlocks.slice(overlap),
+                });
+            }
+            else if (bodyBlocks.length < existingBlocks.length) {
+                yield Promise.all(existingBlocks
+                    .slice(overlap)
+                    .map((block) => this.notion.blocks.delete({ block_id: block.id })));
+            }
+            return this.notion.pages.update({
+                page_id: page.id,
+                properties: yield parser.getProperties(),
+            });
+        });
+    }
+    createIssuePage(parser) {
+        return client_awaiter(this, void 0, void 0, function* () {
+            return this.notion.pages.create({
+                parent: {
+                    database_id: this.databaseId,
+                },
+                properties: yield parser.getProperties(),
+                children: parser.getBodyBlocks(),
+            });
+        });
+    }
+    createIssuePages(issues, parser) {
+        return client_awaiter(this, void 0, void 0, function* () {
+            yield Promise.all(issues.map((issue) => client_awaiter(this, void 0, void 0, function* () {
+                return this.notion.pages.create({
+                    parent: { database_id: this.databaseId },
+                    properties: yield parser.getPropertiesFromIssue(issue),
+                });
+            })));
+        });
+    }
+    fetchNotionIssuePagesAll() {
         return client_awaiter(this, void 0, void 0, function* () {
             core.info("Checking for issues already in the database...");
             const pages = [];
@@ -21039,7 +21106,7 @@ class IssueNotionClient {
     }
     fetchOnlyGithubIssues() {
         return client_awaiter(this, void 0, void 0, function* () {
-            const notionIssues = yield this.fetchNotionIssuePages();
+            const notionIssues = yield this.fetchNotionIssuePagesAll();
             const githubIssues = yield this.fetchGitHubIssues();
             const issueIds = this.pagesToIssueNumbers(notionIssues).map((issue) => issue.issueNumber);
             const pagesToCreate = [];
@@ -21051,43 +21118,52 @@ class IssueNotionClient {
             return pagesToCreate;
         });
     }
-    createPages(pagesToCreate) {
-        return client_awaiter(this, void 0, void 0, function* () {
-            yield Promise.all(pagesToCreate.map((issue) => client_awaiter(this, void 0, void 0, function* () {
-                return this.notion.pages.create({
-                    parent: { database_id: this.databaseId },
-                    properties: yield this.getPropertiesFromIssue(issue),
-                });
-            })));
+}
+
+;// CONCATENATED MODULE: ./src/pull-request/handler.ts
+var pull_request_handler_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
+
+class PullRequestHandler {
+    constructor(options) {
+        this.payload = options.payload;
+        this.client = options.client;
+    }
+    handleOpen() {
+        return pull_request_handler_awaiter(this, void 0, void 0, function* () {
+            if (this.payload.action === "opened") {
+                yield this.onPullRequestOpened();
+            }
         });
     }
-    getPropertiesFromIssue(issue) {
-        return client_awaiter(this, void 0, void 0, function* () {
-            const { number, title, state, id, milestone, created_at, updated_at, repository_url, user, html_url, } = issue;
-            const author = user === null || user === void 0 ? void 0 : user.login;
-            const { assigneesObject, labelsObject } = IssueParser.createMultiSelectObjects(issue);
-            const urlComponents = repository_url.split("/");
-            const org = urlComponents[urlComponents.length - 2];
-            const repo = urlComponents[urlComponents.length - 1];
-            const projectData = yield IssueParser.getProjectData(`${org}/${repo}`, issue.number, this.octokit);
-            // These properties are specific to the template DB referenced in the README.
-            return {
-                Name: properties.title(title),
-                Status: properties.getStatusSelectOption(state),
-                Organization: properties.text(org),
-                Repository: properties.text(repo),
-                Number: properties.number(number),
-                Assignees: properties.multiSelect(assigneesObject),
-                Milestone: properties.text(milestone ? milestone.title : ""),
-                Labels: properties.multiSelect(labelsObject ? labelsObject : []),
-                Author: properties.text(author),
-                Created: properties.date(created_at),
-                Updated: properties.date(updated_at),
-                ID: properties.number(id),
-                Link: properties.url(html_url),
-                Project: properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.name) || ""),
-                "Project Column": properties.text((projectData === null || projectData === void 0 ? void 0 : projectData.columnName) || ""),
-            };
+    onPullRequestOpened() {
+        return pull_request_handler_awaiter(this, void 0, void 0, function* () {
+            let issueId;
+            try {
+                issueId = Number(this.payload.pull_request.issue_url.split("/").pop());
+            }
+            catch (e) {
+                core.error("Issue number not found in pull request url");
+                throw e;
+            }
+            const pages = yield this.client.fetchIssuePages(Number(this.payload.pull_request.issue_url.split("/").pop()));
+            core.info("Building body blocks");
+            if (pages.length > 0) {
+                const page = pages[0];
+                core.info(`Query successful: Page ${page.id}`);
+                core.info(`Updating page for issue #${issueId}`);
+                yield this.client.changeIssueStatus(pages[0], "review");
+            }
+            else {
+                core.warning(`Could not find page with github id ${issueId}`);
+            }
         });
     }
 }
@@ -21107,6 +21183,7 @@ var action_awaiter = (undefined && undefined.__awaiter) || function (thisArg, _a
 
 
 
+
 function run(options) {
     var _a, _b;
     return action_awaiter(this, void 0, void 0, function* () {
@@ -21117,27 +21194,38 @@ function run(options) {
             logLevel: core.isDebug() ? src/* LogLevel.DEBUG */.in.DEBUG : src/* LogLevel.WARN */.in.WARN,
         });
         const octokit = new dist_node/* Octokit */.vd({ auth: github.token });
+        const payload = github.payload;
+        if (!((_a = payload.repository) === null || _a === void 0 ? void 0 : _a.full_name)) {
+            throw new Error("Repository name is not provided");
+        }
+        const client = new NotGitClient({
+            notion: notionClient,
+            databaseId: notion.databaseId,
+            repo: (_b = payload.repository) === null || _b === void 0 ? void 0 : _b.full_name,
+            octokit,
+        });
         if (github.eventName === "issues") {
             const handler = new IssueHandler({
-                notion: notionClient,
-                databaseId: notion.databaseId,
-                payload: github.payload,
+                client,
+                payload: payload,
                 octokit,
             });
             yield handler.handleIssue();
         }
         else if (github.eventName === "workflow_dispatch") {
-            if (!((_a = github.payload.repository) === null || _a === void 0 ? void 0 : _a.full_name)) {
-                throw new Error("Repository not found");
-            }
-            const handler = new IssueNotionClient({
-                notion: notionClient,
-                databaseId: notion.databaseId,
-                repo: (_b = github.payload.repository) === null || _b === void 0 ? void 0 : _b.full_name,
+            const handler = new IssueHandler({
+                client,
+                payload: payload,
                 octokit,
             });
-            const issuesToCreate = yield handler.fetchOnlyGithubIssues();
-            yield handler.createPages(issuesToCreate);
+            yield handler.handleSync();
+        }
+        else if (github.eventName === "pull_request") {
+            const handler = new PullRequestHandler({
+                client,
+                payload: payload,
+            });
+            yield handler.handleOpen();
         }
         core.info("Complete!");
     });
